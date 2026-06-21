@@ -9,7 +9,7 @@ from google.genai import errors as genai_errors
 from sqlalchemy import inspect, text
 
 from api.v1.endpoints.incidents import router as incidents_v1_router
-from core.config import _ENV_FILE, get_settings
+from core.config import get_settings
 from db.models import IncidentReportDB  # noqa: F401 — registers model with Base
 from db.session import Base, engine
 from services.regulation_store import initialize_regulation_store
@@ -44,9 +44,8 @@ async def lifespan(app: FastAPI):
 
     if not settings.gemini_configured:
         logger.warning(
-            "GEMINI_API_KEY is empty in %s — skipping regulation store init. "
-            "Add your key and restart to enable POST /report.",
-            _ENV_FILE,
+            "GEMINI_API_KEY is not set — skipping regulation store init. "
+            "Add the key via Render environment variables (or .env locally) and redeploy."
         )
     else:
         try:
@@ -55,9 +54,8 @@ async def lifespan(app: FastAPI):
         except genai_errors.ClientError as exc:
             logger.error(
                 "Gemini API call failed during startup (%s). "
-                "Check GEMINI_API_KEY in %s. /health works; /report is disabled until fixed.",
+                "Verify GEMINI_API_KEY in Render (or .env locally). /health works; /report disabled until fixed.",
                 exc,
-                _ENV_FILE,
             )
         except Exception as exc:
             logger.error(

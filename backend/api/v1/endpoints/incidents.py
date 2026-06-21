@@ -63,7 +63,7 @@ async def create_report(
         raise HTTPException(
             status_code=503,
             detail=(
-                "Gemini is not ready. Set a valid GEMINI_API_KEY in .env and restart the server."
+                "Gemini is not ready. Set GEMINI_API_KEY in Render (or .env locally) and redeploy."
             ),
         )
 

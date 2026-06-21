@@ -13,4 +13,4 @@ def get_genai_client() -> genai.Client:
     """Create a cached GenAI client using the configured API key."""
     require_gemini_api_key()  # fail fast with a clear 503 if missing
     settings = get_settings()
-    return genai.Client(api_key=settings.GEMINI_API_KEY)
+    return genai.Client(api_key=settings.gemini_api_key)

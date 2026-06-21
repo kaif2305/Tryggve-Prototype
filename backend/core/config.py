@@ -8,12 +8,19 @@ from urllib.parse import quote_plus
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Resolve .env from monorepo root (or backend/) so local dev works from any CWD.
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 _REPO_ROOT = _BACKEND_ROOT.parent
-_ENV_FILE = _REPO_ROOT / ".env"
-if not _ENV_FILE.exists():
-    _ENV_FILE = _BACKEND_ROOT / ".env"
+
+
+def _discover_env_files() -> tuple[str, ...] | None:
+    """Return existing .env paths for optional local loading (never required in production)."""
+    paths = [p for p in (_REPO_ROOT / ".env", _BACKEND_ROOT / ".env") if p.exists()]
+    return tuple(str(p) for p in paths) or None
+
+
+def _is_deployed_environment() -> bool:
+    """True on Render and other production hosts where injected env vars are authoritative."""
+    return bool(os.getenv("RENDER")) or os.getenv("ENVIRONMENT", "").lower() == "production"
 
 
 class Settings(BaseSettings):
@@ -24,7 +31,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=str(_ENV_FILE) if _ENV_FILE.exists() else None,
+        env_file=_discover_env_files(),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -38,26 +45,21 @@ class Settings(BaseSettings):
         dotenv_settings,
         file_secret_settings,
     ):
-        """In production, container env vars win over baked-in dotenv files."""
-        if os.getenv("ENVIRONMENT", "").lower() == "production":
-            return (env_settings, dotenv_settings, init_settings)
-        return (dotenv_settings, env_settings, init_settings)
+        """Prefer injected env on Render; prefer .env locally to avoid stale shell exports."""
+        if _is_deployed_environment():
+            return (env_settings, dotenv_settings, init_settings, file_secret_settings)
+        return (dotenv_settings, env_settings, init_settings, file_secret_settings)
 
     ENVIRONMENT: str = "development"
-    # Empty default allows the server to boot for /health; AI routes validate at call time.
     GEMINI_API_KEY: str = ""
     DATABASE_URL: str = "sqlite:///./tryggve.db"
-    # When set, these build a URL-safe Postgres connection string (handles @, #, etc. in passwords).
     POSTGRES_HOST: str = ""
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = ""
     POSTGRES_PASSWORD: str = ""
     POSTGRES_DB: str = ""
-    # Comma-separated origins, e.g. "https://app.example.com". Use "*" only in local dev.
     CORS_ORIGINS: str = "*"
 
-    # Model IDs checked against google-genai SDK docs at build time (Jun 2026).
-    # See https://ai.google.dev/gemini-api/docs/models — update when deprecated.
     GEMINI_FLASH_MODEL: str = "gemini-3.5-flash"
     GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-2"
     GEMINI_EMBEDDING_DIMENSION: int = 768
@@ -65,8 +67,13 @@ class Settings(BaseSettings):
     @field_validator("GEMINI_API_KEY")
     @classmethod
     def strip_api_key(cls, value: str) -> str:
-        """Normalize whitespace from .env values."""
+        """Normalize whitespace from env / .env values."""
         return value.strip()
+
+    @property
+    def gemini_api_key(self) -> str:
+        """Resolved Gemini key from Pydantic settings or ``os.environ`` fallback."""
+        return (self.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY") or "").strip()
 
     @property
     def database_url(self) -> str:
@@ -79,7 +86,6 @@ class Settings(BaseSettings):
                 f"postgresql+psycopg2://{user}:{password}@{host}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
             )
         url = self.DATABASE_URL
-        # Render/Heroku provide postgresql:// — SQLAlchemy needs the psycopg2 driver.
         if url.startswith("postgres://"):
             return url.replace("postgres://", "postgresql+psycopg2://", 1)
         if url.startswith("postgresql://") and "+psycopg2" not in url:
@@ -88,8 +94,8 @@ class Settings(BaseSettings):
 
     @property
     def gemini_configured(self) -> bool:
-        """Return True when a non-empty Gemini API key is present."""
-        return bool(self.GEMINI_API_KEY)
+        """True when a non-empty Gemini API key is available from env or settings."""
+        return bool(self.gemini_api_key)
 
     @property
     def cors_origins(self) -> list[str]:
