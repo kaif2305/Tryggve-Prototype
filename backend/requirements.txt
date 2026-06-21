@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+sqlalchemy
+google-genai
+chromadb
+python-multipart
+python-dotenv
+Pillow
+psycopg2-binary

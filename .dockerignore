@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.db
+.env
+.env.*
+!.env.example
+!.env.production.example
+tryggve.db
+frontend/
+.git/
+*.md
+docker-compose*.yml
+nginx/
+terminals/
+agent-tools/
+agent-transcripts/
